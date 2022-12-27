@@ -23,7 +23,7 @@ After=network.target
 [Service]
 Type=simple
 Restart=always
-ExecStart=CloudflareDDNS
+ExecStart=/Path/To/CloudflareDDNS
 
 [Install]
 WantedBy=multi-user.target
