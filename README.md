@@ -9,19 +9,12 @@ Parameters in appsettings.json:
 - Period: Period for check. eg: 00:01:00
 
 ## Create Windows Service
-**Self Container**
 ```bat
 sc.exe create "CloudflareDDNS" binpath="C:\Path\To\CloudflareDDNS.exe" DisplayName="Cloudflare DDNS" start=auto
 ```  
 
-**No Self Container**
-```bat
-sc.exe create "CloudflareDDNS" binpath="C:\Path\To\dotnet.exe C:\Path\To\CloudflareDDNS.dll" DisplayName="Cloudflare DDNS" start=auto
-```
 
-
-## Create Linux Service (Systemld)
-**Self Container**  
+## Create Linux Service (Systemld) 
 ```ini
 [Unit]
 Description=Cloudflare DDNS
@@ -31,21 +24,6 @@ After=network.target
 Type=simple
 Restart=always
 ExecStart=CloudflareDDNS
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**No Self Container**  
-```ini
-[Unit]
-Description=Cloudflare DDNS
-After=network.target
-
-[Service]
-Type=simple
-Restart=always
-ExecStart=dotnet /Path/To/CloudflareDDNS.dll
 
 [Install]
 WantedBy=multi-user.target
