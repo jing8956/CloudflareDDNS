@@ -1,23 +1,28 @@
 # CloudflareDDNS
-```
-CloudflareDDNS - periodically obtain the current IPv6 address from the NIC and update Cloudflare DNS record if changed.
+Periodically obtain the current IPv6 address from the NIC and update Cloudflare DNS record if changed.
 
-usage: CloudflareDDNS -l | --list-interfaces
-usage: CloudflareDDNS <interfaceName> <domain> <apiKey> <zoneId> [period]
+Parameters in appsettings.json:
+- InterfaceName: Network interfaces name. You can find all network interface name in log when network interface not found.
+- Domain: Upload DNS reqcord domain. It must be created in advance. eg: my-machine.example.com
+- ApiKey: Visit https://dash.cloudflare.com/profile/api-tokens to create a api key.
+- ZoneId: Visit Cloudflare domain Overview page and find Zone ID.
+- Period: Period for check. eg: 00:01:00
 
-Options:
-  -l, --list-interfaces list all network interfaces
- 
-Parameters:
- <interfaceName> Required: network interfaces name, please run `CloudflareDDNS -l`.
- <domain>        Required: upload DNS reqcord domain. eg: my-machine.example.com
- <apiKey>        Required: visit https://dash.cloudflare.com/profile/api-tokens to create a api key.
- <zoneId>        Required: visit Cloudflare domain Overview page and find Zone ID.
- [period]        Optional: period for check. default: 00:01:00
+## Create Windows Service
+**Self Container**
+```bat
+sc.exe create "CloudflareDDNS" binpath="C:\Path\To\CloudflareDDNS.exe" DisplayName="Cloudflare DDNS" start=auto
+```  
+
+**No Self Container**
+```bat
+sc.exe create "CloudflareDDNS" binpath="C:\Path\To\dotnet.exe C:\Path\To\CloudflareDDNS.dll" DisplayName="Cloudflare DDNS" start=auto
 ```
+
 
 ## Create Linux Service (Systemld)
-```
+**Self Container**  
+```ini
 [Unit]
 Description=Cloudflare DDNS
 After=network.target
@@ -25,7 +30,22 @@ After=network.target
 [Service]
 Type=simple
 Restart=always
-ExecStart=CloudflareDDNS <interfaceName> <domain> <apiKey> <zoneId> [period]
+ExecStart=CloudflareDDNS
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**No Self Container**  
+```ini
+[Unit]
+Description=Cloudflare DDNS
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=dotnet /Path/To/CloudflareDDNS.dll
 
 [Install]
 WantedBy=multi-user.target
