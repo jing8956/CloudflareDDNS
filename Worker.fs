@@ -52,7 +52,7 @@ type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogg
                 logger.LogInformation("Record IP: {RecordIP}", recordIp)
                 let mutable recordIp = recordIp
                 use timer = new PeriodicTimer(period)
-                while stoppingToken.IsCancellationRequested do
+                while not stoppingToken.IsCancellationRequested do
                     let addresses =  getInterfaceAddresses networkInterface |> Enumerable.ToList
                     if addresses.Count = 0 then
                         logger.LogWarning("Network interface '{InterfaceName}' address not found.", interfaceName)
