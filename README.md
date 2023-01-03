@@ -24,6 +24,7 @@ After=network.target
 Type=simple
 Restart=always
 ExecStart=/Path/To/CloudflareDDNS
+WorkingDirectory=/Path/To
 
 [Install]
 WantedBy=multi-user.target

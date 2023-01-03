@@ -22,14 +22,14 @@ type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogg
     let zoneId = configuration.GetValue<string>("ZoneId")
     let period = configuration.GetValue<TimeSpan>("Period")
 
-    let isWindows = OperatingSystem.IsWindows()
+    let isNotWindows = OperatingSystem.IsWindows() |> not
     let getInterfaceAddresses (networkInterface: NetworkInterface) =
         networkInterface.GetIPProperties().UnicastAddresses
-        |> Seq.where (fun i -> isWindows && i.DuplicateAddressDetectionState = DuplicateAddressDetectionState.Preferred)
+        |> Seq.where (fun i -> isNotWindows || i.DuplicateAddressDetectionState = DuplicateAddressDetectionState.Preferred)
         |> Seq.where (fun i -> i.Address.AddressFamily = System.Net.Sockets.AddressFamily.InterNetworkV6)
         |> Seq.where (fun i -> not i.Address.IsIPv6LinkLocal)
         |> Seq.where (fun i -> i.PrefixLength = 64)
-        |> Seq.where (fun i -> isWindows && i.PrefixOrigin = PrefixOrigin.RouterAdvertisement)
+        |> Seq.where (fun i -> isNotWindows || i.PrefixOrigin = PrefixOrigin.RouterAdvertisement)
         |> Seq.sortByDescending (fun i -> i.AddressPreferredLifetime)
         |> Seq.map (fun i -> i.Address.ToString())
 
