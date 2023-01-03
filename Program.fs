@@ -10,6 +10,7 @@ open Microsoft.Extensions.Hosting
 module Program =
     let createHostBuilder args =
         Host.CreateDefaultBuilder(args)
+            .UseSystemd()
             .UseWindowsService(fun o -> o.ServiceName <- "Cloudflare DDNS")
             .ConfigureServices(fun hostContext services ->
                 services.AddHttpClient() |> ignore
