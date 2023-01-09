@@ -14,7 +14,7 @@ open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
 
-type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogger<Worker>, host: IHost) =
+type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogger<Worker>) =
     inherit BackgroundService()
     let interfaceName = configuration.GetValue<string>("InterfaceName")
     let domain = configuration.GetValue<string>("Domain")   
@@ -37,22 +37,23 @@ type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogg
        httpClient.DefaultRequestHeaders.Authorization <- new AuthenticationHeaderValue("Bearer", apiKey)
     override _.ExecuteAsync(stoppingToken) =
         task{
-            let allInterfaces = NetworkInterface.GetAllNetworkInterfaces()
-            match allInterfaces |> Seq.tryFind (fun i -> i.Name = interfaceName) with
-            | Some networkInterface ->
-                let! recordId, recordIp = 
-                    task {
-                        let! content = httpClient.GetFromJsonAsync<JsonNode>($"zones/{zoneId}/dns_records?name={domain}&type=AAAA", stoppingToken)
-                        let result = content.["result"].[0]
-                        let id = result.["id"].GetValue<string>()
-                        let content = result.["content"].GetValue<string>()
-                        return id, content
-                    }
-                logger.LogInformation("Record ID: {RecordID}", recordId)
-                logger.LogInformation("Record IP: {RecordIP}", recordIp)
-                let mutable recordIp = recordIp
-                use timer = new PeriodicTimer(period)
-                while not stoppingToken.IsCancellationRequested do
+            let! recordId, recordIp = 
+                task {
+                    let! content = httpClient.GetFromJsonAsync<JsonNode>($"zones/{zoneId}/dns_records?name={domain}&type=AAAA", stoppingToken)
+                    let result = content.["result"].[0]
+                    let id = result.["id"].GetValue<string>()
+                    let content = result.["content"].GetValue<string>()
+                    return id, content
+                }
+            logger.LogInformation("Record ID: {RecordID}", recordId)
+            logger.LogInformation("Record IP: {RecordIP}", recordIp)
+            let mutable recordIp = recordIp
+
+            use timer = new PeriodicTimer(period)
+            while not stoppingToken.IsCancellationRequested do
+                let allInterfaces = NetworkInterface.GetAllNetworkInterfaces()
+                match allInterfaces |> Seq.tryFind (fun i -> i.Name = interfaceName) with
+                | Some networkInterface ->
                     let addresses =  getInterfaceAddresses networkInterface |> Enumerable.ToList
                     if addresses.Count = 0 then
                         logger.LogWarning("Network interface '{InterfaceName}' address not found.", interfaceName)
@@ -67,17 +68,16 @@ type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogg
                                 request.Content <- new StringContent($"{{\"content\":\"{address}\"}}", System.Text.Encoding.UTF8, "application/json")
                                 use! response = httpClient.SendAsync(request)
                                 response.EnsureSuccessStatusCode() |> ignore
-
+                
                                 recordIp <- address
                                 logger.LogInformation("Upload new address '{Address}' succeed.", address)
                             with
                             | e -> logger.LogError(e, "Exception occurred.")
-                    do! timer.WaitForNextTickAsync(stoppingToken).AsTask() :> Task
-            | None ->
-                logger.LogWarning("Network interface '{InterfaceName}' not found.", interfaceName);
-
-                (StringBuilder(), allInterfaces)
-                ||> Seq.fold (fun sb i -> sb.AppendFormat("{0}:{1}\r\n", i.Name, String.Join(", ", getInterfaceAddresses i)))
-                |> fun sb -> logger.LogInformation("All network interfaces:\r\n\r\n{AllNetworkInterfaces}", sb.ToString())
-                do! host.StopAsync(stoppingToken)
+                | None ->
+                    logger.LogWarning("Network interface '{InterfaceName}' not found.", interfaceName);
+                
+                    (StringBuilder(), allInterfaces)
+                    ||> Seq.fold (fun sb i -> sb.AppendFormat("{0}:{1}\r\n", i.Name, String.Join(", ", getInterfaceAddresses i)))
+                    |> fun sb -> logger.LogInformation("All network interfaces:\r\n\r\n{AllNetworkInterfaces}", sb.ToString())
+                do! timer.WaitForNextTickAsync(stoppingToken).AsTask() :> Task
         }
