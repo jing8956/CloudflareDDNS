@@ -13,14 +13,18 @@ open System.Threading.Tasks
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
+open Microsoft.Extensions.Options
 
-type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogger<Worker>) =
+type WorkerOptions() =
+    member val InterfaceName = Unchecked.defaultof<string> with get, set
+    member val Domain = Unchecked.defaultof<string> with get, set
+    member val RecordId = Unchecked.defaultof<string> with get, set
+    member val ApiKey = Unchecked.defaultof<string> with get, set
+    member val ZoneId = Unchecked.defaultof<string> with get, set
+    member val Period = Unchecked.defaultof<TimeSpan> with get, set
+
+type Worker(httpClient: HttpClient, options: IOptions<WorkerOptions>, logger: ILogger<Worker>) =
     inherit BackgroundService()
-    let interfaceName = configuration.GetValue<string>("InterfaceName")
-    let domain = configuration.GetValue<string>("Domain")   
-    let apiKey = configuration.GetValue<string>("ApiKey")
-    let zoneId = configuration.GetValue<string>("ZoneId")
-    let period = configuration.GetValue<TimeSpan>("Period")
 
     let isNotWindows = OperatingSystem.IsWindows() |> not
     let getInterfaceAddresses (networkInterface: NetworkInterface) =
@@ -34,29 +38,19 @@ type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogg
         |> Seq.map (fun i -> i.Address.ToString())
 
     do httpClient.BaseAddress <- "https://api.cloudflare.com/client/v4/" |> Uri
-       httpClient.DefaultRequestHeaders.Authorization <- new AuthenticationHeaderValue("Bearer", apiKey)
+       httpClient.DefaultRequestHeaders.Authorization <- new AuthenticationHeaderValue("Bearer", options.Value.ApiKey)
     override _.ExecuteAsync(stoppingToken) =
         task{
-            let! recordId, recordIp = 
-                task {
-                    let! content = httpClient.GetFromJsonAsync<JsonNode>($"zones/{zoneId}/dns_records?name={domain}&type=AAAA", stoppingToken)
-                    let result = content.["result"].[0]
-                    let id = result.["id"].GetValue<string>()
-                    let content = result.["content"].GetValue<string>()
-                    return id, content
-                }
-            logger.LogInformation("Record ID: {RecordID}", recordId)
-            logger.LogInformation("Record IP: {RecordIP}", recordIp)
-            let mutable recordIp = recordIp
+            let mutable recordIp = ""
 
-            use timer = new PeriodicTimer(period)
+            use timer = new PeriodicTimer(options.Value.Period)
             while not stoppingToken.IsCancellationRequested do
                 let allInterfaces = NetworkInterface.GetAllNetworkInterfaces()
-                match allInterfaces |> Seq.tryFind (fun i -> i.Name = interfaceName) with
+                match allInterfaces |> Seq.tryFind (fun i -> i.Name = options.Value.InterfaceName) with
                 | Some networkInterface ->
                     let addresses =  getInterfaceAddresses networkInterface |> Enumerable.ToList
                     if addresses.Count = 0 then
-                        logger.LogWarning("Network interface '{InterfaceName}' address not found.", interfaceName)
+                        logger.LogWarning("Network interface '{InterfaceName}' address not found.", options.Value.InterfaceName)
                     else
                         if addresses.Count > 1 then logger.LogWarning("Mulit addresses '{Addresses}'.", String.Join(", ", addresses))
                         let address = addresses.[0]
@@ -64,7 +58,7 @@ type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogg
                             logger.LogInformation("Same address.")
                         else
                             try
-                                let request = new HttpRequestMessage(HttpMethod.Patch, $"zones/{zoneId}/dns_records/{recordId}")
+                                let request = new HttpRequestMessage(HttpMethod.Patch, $"zones/{options.Value.ZoneId}/dns_records/{options.Value.RecordId}")
                                 request.Content <- new StringContent($"{{\"content\":\"{address}\"}}", System.Text.Encoding.UTF8, "application/json")
                                 use! response = httpClient.SendAsync(request)
                                 response.EnsureSuccessStatusCode() |> ignore
@@ -74,7 +68,7 @@ type Worker(httpClient: HttpClient, configuration: IConfiguration, logger: ILogg
                             with
                             | e -> logger.LogError(e, "Exception occurred.")
                 | None ->
-                    logger.LogWarning("Network interface '{InterfaceName}' not found.", interfaceName);
+                    logger.LogWarning("Network interface '{InterfaceName}' not found.", options.Value.InterfaceName);
                 
                     (StringBuilder(), allInterfaces)
                     ||> Seq.fold (fun sb i -> sb.AppendFormat("{0}:{1}\r\n", i.Name, String.Join(", ", getInterfaceAddresses i)))

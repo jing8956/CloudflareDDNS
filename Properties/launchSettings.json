@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CloudflareDDNS": {
+      "commandName": "Project",
+      "commandLineArgs": "--domain home.jing8956.com --zoneid 2e8f1d899021c5836a4aa356a3c027e5 --apikey PJQ6S__FyeNrWMeZSXudY95UnJsdGRKXzgqLLl3B"
+    }
+  }
+}
