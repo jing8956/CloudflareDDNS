@@ -14,7 +14,7 @@ sc.exe create "CloudflareDDNS" binpath="C:\Path\To\CloudflareDDNS.exe" DisplayNa
 ```  
 
 
-## Create Linux Service (Systemld) 
+## Create Linux Service (Systemd) 
 ```ini
 [Unit]
 Description=Cloudflare DDNS
