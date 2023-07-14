@@ -34,7 +34,7 @@ type Worker(httpClient: HttpClient, options: IOptions<WorkerOptions>, logger: IL
         |> Seq.where (fun i -> not i.Address.IsIPv6LinkLocal)
         |> Seq.where (fun i -> i.PrefixLength = 64)
         |> Seq.where (fun i -> isNotWindows || i.PrefixOrigin = PrefixOrigin.RouterAdvertisement)
-        |> Seq.sortByDescending (fun i -> i.AddressPreferredLifetime)
+        |> Seq.sortByDescending (fun i -> if isNotWindows then 0L else i.AddressPreferredLifetime)
         |> Seq.map (fun i -> i.Address.ToString())
 
     do httpClient.BaseAddress <- "https://api.cloudflare.com/client/v4/" |> Uri
