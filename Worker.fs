@@ -1,19 +1,9 @@
 namespace CloudflareDDNS
 
 open System
-open System.Linq
-open System.Net.Http
-open System.Net.Http.Headers
-open System.Net.Http.Json
 open System.Net.NetworkInformation
-open System.Text
-open System.Text.Json.Nodes
 open System.Threading
 open System.Threading.Tasks
-open Microsoft.Extensions.Configuration
-open Microsoft.Extensions.Hosting
-open Microsoft.Extensions.Logging
-open Microsoft.Extensions.Options
 
 type WorkerOptions() =
     member val InterfaceName = Unchecked.defaultof<string> with get, set
@@ -23,11 +13,33 @@ type WorkerOptions() =
     member val ZoneId = Unchecked.defaultof<string> with get, set
     member val Period = Unchecked.defaultof<TimeSpan> with get, set
 
-type Worker(httpClient: HttpClient, options: IOptions<WorkerOptions>, logger: ILogger<Worker>) =
-    inherit BackgroundService()
+type AddressNotFoundEventArgs(interfaceName) = inherit EventArgs() member _.InterfaceName = interfaceName
+type MulitAddressesEventArgs(addresses) = inherit EventArgs() member _.Addresses = addresses
+type NewAddressUploadedEventArgs(address) = inherit EventArgs() member _.Address = address
+type UnhandledExceptionEventArgs(ex) = inherit EventArgs() member _.Exception = ex
+type InterfaceNotFoundEventArgs(interfaceName, interfaces) =
+    inherit EventArgs()
+    member _.InterfaceName = interfaceName
+    member _.Interfaces = interfaces
 
-    let isNotWindows = OperatingSystem.IsWindows() |> not
-    let getInterfaceAddresses (networkInterface: NetworkInterface) =
+type Worker(client: CloudflareClient, options: WorkerOptions) =
+    static let isNotWindows = OperatingSystem.IsWindows() |> not
+
+    let addressNotFoundEvent = new Event<AddressNotFoundEventArgs>()
+    let mulitAddressesEvent = new Event<MulitAddressesEventArgs>()
+    let sameAddressEvent = new Event<EventArgs>()
+    let newAddressUploadedEvent = new Event<NewAddressUploadedEventArgs>()
+    let unhandledExceptionEvent = new Event<UnhandledExceptionEventArgs>()
+    let interfaceNotFoundEvent = new Event<InterfaceNotFoundEventArgs>()
+
+    [<CLIEvent>] member _.AddressNotFoundEvent = addressNotFoundEvent.Publish
+    [<CLIEvent>] member _.MulitAddressesEvent = mulitAddressesEvent.Publish
+    [<CLIEvent>] member _.SameAddressEvent = sameAddressEvent.Publish
+    [<CLIEvent>] member _.NewAddressUploadedEvent = newAddressUploadedEvent.Publish
+    [<CLIEvent>] member _.UnhandledExceptionEventArgs = unhandledExceptionEvent.Publish
+    [<CLIEvent>] member _.InterfaceNotFoundEvent = interfaceNotFoundEvent.Publish
+
+    static member GetInterfaceAddresses(networkInterface: NetworkInterface) =
         networkInterface.GetIPProperties().UnicastAddresses
         |> Seq.where (fun i -> isNotWindows || i.DuplicateAddressDetectionState = DuplicateAddressDetectionState.Preferred)
         |> Seq.where (fun i -> i.Address.AddressFamily = System.Net.Sockets.AddressFamily.InterNetworkV6)
@@ -36,42 +48,29 @@ type Worker(httpClient: HttpClient, options: IOptions<WorkerOptions>, logger: IL
         |> Seq.where (fun i -> isNotWindows || i.PrefixOrigin = PrefixOrigin.RouterAdvertisement)
         |> Seq.sortByDescending (fun i -> if isNotWindows then 0L else i.AddressPreferredLifetime)
         |> Seq.map (fun i -> i.Address.ToString())
-
-    do httpClient.BaseAddress <- "https://api.cloudflare.com/client/v4/" |> Uri
-       httpClient.DefaultRequestHeaders.Authorization <- new AuthenticationHeaderValue("Bearer", options.Value.ApiKey)
-    override _.ExecuteAsync(stoppingToken) =
+    member _.ExecuteAsync(stoppingToken: CancellationToken) =
         task{
             let mutable recordIp = ""
 
-            use timer = new PeriodicTimer(options.Value.Period)
+            use timer = new PeriodicTimer(options.Period)
             while not stoppingToken.IsCancellationRequested do
                 let allInterfaces = NetworkInterface.GetAllNetworkInterfaces()
-                match allInterfaces |> Seq.tryFind (fun i -> i.Name = options.Value.InterfaceName) with
+                match allInterfaces |> Seq.tryFind (fun i -> i.Name = options.InterfaceName) with
                 | Some networkInterface ->
-                    let addresses =  getInterfaceAddresses networkInterface |> Enumerable.ToList
+                    let addresses =  Worker.GetInterfaceAddresses networkInterface |> ResizeArray
                     if addresses.Count = 0 then
-                        logger.LogWarning("Network interface '{InterfaceName}' address not found.", options.Value.InterfaceName)
+                        addressNotFoundEvent.Trigger(new AddressNotFoundEventArgs(options.InterfaceName))
                     else
-                        if addresses.Count > 1 then logger.LogWarning("Mulit addresses '{Addresses}'.", String.Join(", ", addresses))
+                        if addresses.Count > 1 then mulitAddressesEvent.Trigger(new MulitAddressesEventArgs(addresses))
                         let address = addresses.[0]
-                        if address = recordIp then
-                            logger.LogInformation("Same address.")
+                        if address = recordIp then sameAddressEvent.Trigger(EventArgs.Empty)
                         else
                             try
-                                let request = new HttpRequestMessage(HttpMethod.Patch, $"zones/{options.Value.ZoneId}/dns_records/{options.Value.RecordId}")
-                                request.Content <- new StringContent($"{{\"content\":\"{address}\"}}", System.Text.Encoding.UTF8, "application/json")
-                                use! response = httpClient.SendAsync(request)
-                                response.EnsureSuccessStatusCode() |> ignore
-                
+                                do! client.SetAddress(options.ZoneId, options.RecordId, address)
                                 recordIp <- address
-                                logger.LogInformation("Upload new address '{Address}' succeed.", address)
+                                newAddressUploadedEvent.Trigger(new NewAddressUploadedEventArgs(address))
                             with
-                            | e -> logger.LogError(e, "Exception occurred.")
-                | None ->
-                    logger.LogWarning("Network interface '{InterfaceName}' not found.", options.Value.InterfaceName);
-                
-                    (StringBuilder(), allInterfaces)
-                    ||> Seq.fold (fun sb i -> sb.AppendFormat("{0}:{1}\r\n", i.Name, String.Join(", ", getInterfaceAddresses i)))
-                    |> fun sb -> logger.LogInformation("All network interfaces:\r\n\r\n{AllNetworkInterfaces}", sb.ToString())
+                            | e -> unhandledExceptionEvent.Trigger(new UnhandledExceptionEventArgs(e))
+                | None -> interfaceNotFoundEvent.Trigger(new InterfaceNotFoundEventArgs(options.InterfaceName, allInterfaces))
                 do! timer.WaitForNextTickAsync(stoppingToken).AsTask() :> Task
-        }
+        } :> Task

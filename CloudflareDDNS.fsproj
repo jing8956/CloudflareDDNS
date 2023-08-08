@@ -1,22 +1,40 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net7.0</TargetFramework>
     
-    <PublishSingleFile Condition="'$(Configuration)' == 'Release'">true</PublishSingleFile>
+    <!--<PublishSingleFile Condition="'$(Configuration)' == 'Release'">true</PublishSingleFile>-->
+    <PublishAot>false</PublishAot>
+    <DefineConstants Condition="'$(PublishAot)' == 'true'">$(DefineConstants);AOT</DefineConstants>
+    
+    <UserSecretsId>fbcc92ec-0b2c-457f-a0c4-29d34372b220</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
+    <None Condition="'$(PublishAot)' != 'true'" Include="appsettings.sample.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Dockerfile" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Compile Include="CloudflareClient.fs" />
     <Compile Include="Worker.fs" />
+    <Compile Condition="'$(PublishAot)' != 'true'" Include="BackgroundWorker.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(PublishAot)' != 'true'">
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="7.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="7.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="7.*" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="7.*" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="7.*" />
+  </ItemGroup>
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="7.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="7.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="7.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="7.0.0" />
+    <PackageReference Update="FSharp.Core" Version="7.*" />
   </ItemGroup>
   
 </Project>
