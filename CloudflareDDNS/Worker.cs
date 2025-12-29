@@ -15,9 +15,9 @@ public class Worker(
         var interfaceName = options.Value.InterfaceName;
         var recordId = options.Value.RecordId;
 
-        if(interfaceName == null)
+        if (interfaceName == null)
         {
-            logger.LogWarning("InterfaceName is null, try find network interface.");
+            Log.InterfaceNameIsNull(logger);
 
             var interfaces = NetworkInterface.GetAllNetworkInterfaces();
             interfaceName = interfaces.Where(i =>
@@ -31,39 +31,39 @@ public class Worker(
 
             if (interfaceName == null)
             {
-                logger.LogError("Network interface not found.");
+                Log.NetworkInterfaceNotFound(logger);
                 await host.StopAsync(stoppingToken);
                 return;
             }
 
-            logger.LogInformation("Found interface '{InterfaceName}'.", interfaceName);
+            Log.FoundInterface(logger, interfaceName);
         }
         if(recordId == null)
         {
-            logger.LogWarning("RecordId is null, try find recrod id.");
+            Log.RecordIdIsNull(logger);
 
             var domain = options.Value.Domain;
             if (domain == null)
             {
                 domain = Dns.GetHostEntry("localhost").HostName;
-                logger.LogWarning("Domain is null, try use hostname '{HostName}'.", domain);
+                Log.DomainIsNull(logger, domain);
             }
 
             var records = await cloudflareClient.FindRecordsAsync(domain);
             switch(records.Length)
             {
                 case 0:
-                    logger.LogError("No record found.");
+                    Log.NoRecordFound(logger);
                     await host.StopAsync(stoppingToken);
                     return;
                 case 1:
                     recordId = records[0].Id;
-                    logger.LogInformation("Found record id '{RecordId}'", recordId);
+                    Log.FoundRecordId(logger, recordId);
                     break;
                 default:
                     foreach (var item in records)
                     {
-                        logger.LogError("Muliti records found: {RecordId} {Content}", item.Id, item.Content);
+                        Log.MulitiRecordsFound(logger, item.Id, item.Content);
                     }
                     await host.StopAsync(stoppingToken);
                     return;
@@ -78,7 +78,7 @@ public class Worker(
             var nic = allInterfaces.FirstOrDefault(i => i.Name == interfaceName);
             if(nic == null)
             {
-                logger.LogWarning("NetworkInterface '{InterfaceName}' not found.", interfaceName);
+                Log.NetworkInterfaceNotFound(logger, interfaceName);
                 continue;
             }
 
@@ -94,7 +94,7 @@ public class Worker(
             
             if(addr == null)
             {
-                logger.LogWarning("Address not found.");
+                Log.AddressNotFound(logger);
                 continue;
             }
 
@@ -104,16 +104,16 @@ public class Worker(
                 {
                     await cloudflareClient.SetAddress(recordId, addr);
                     recordIp = addr;
-                    logger.LogInformation("Update new ip '{IpAddress}' succeed.", addr);
+                    Log.UpdateNewIp(logger, addr);
                 }
                 catch (Exception e)
                 {
-                    logger.LogWarning(e, "Update new ip address failed.");
+                    Log.UpdateNewIpFailed(e, logger);
                 }
             }
             else
             {
-                logger.LogDebug("Same addr");
+                Log.SameIPAddress(logger);
             }
 
             await timer.WaitForNextTickAsync(stoppingToken);
