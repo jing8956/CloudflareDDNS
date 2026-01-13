@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -10,6 +11,36 @@ public class Worker(
     IOptions<WorkerOptions> options,
     IHost host, ILogger<Worker> logger) : BackgroundService
 {
+    private static bool GetNetworkInterface(string interfaceName, [NotNullWhen(true)] out NetworkInterface? nic)
+    {
+        var allInterfaces = NetworkInterface.GetAllNetworkInterfaces();
+        foreach (var item in allInterfaces)
+        {
+            if (item.Name == interfaceName)
+            {
+                nic = item;
+                return true;
+            }
+        }
+
+        nic = null;
+        return false;
+    }
+
+    private static bool GetAddress(NetworkInterface nic, [NotNullWhen(true)] out string? address)
+    {
+        address = nic.GetIPProperties().UnicastAddresses
+            .Where(static i => !OperatingSystem.IsWindows() || i.DuplicateAddressDetectionState == DuplicateAddressDetectionState.Preferred)
+            .Where(static i => i.Address.AddressFamily == AddressFamily.InterNetworkV6)
+            .Where(static i => !i.Address.IsIPv6LinkLocal)
+            .Where(static i => i.PrefixLength == 64)
+            .Where(static i => !OperatingSystem.IsWindows() || i.PrefixOrigin == PrefixOrigin.RouterAdvertisement)
+            .OrderByDescending(static i => OperatingSystem.IsWindows() ? i.AddressPreferredLifetime : 0L)
+            .Select(static i => i.Address.ToString())
+            .FirstOrDefault();
+        return address is not null;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interfaceName = options.Value.InterfaceName;
@@ -38,7 +69,7 @@ public class Worker(
 
             Log.FoundInterface(logger, interfaceName);
         }
-        if(recordId == null)
+        if (recordId == null)
         {
             Log.RecordIdIsNull(logger);
 
@@ -50,7 +81,7 @@ public class Worker(
             }
 
             var records = await cloudflareClient.FindRecordsAsync(domain);
-            switch(records.Length)
+            switch (records.Length)
             {
                 case 0:
                     Log.NoRecordFound(logger);
@@ -74,49 +105,38 @@ public class Worker(
         var recordIp = "";
         while (!stoppingToken.IsCancellationRequested)
         {
-            var allInterfaces = NetworkInterface.GetAllNetworkInterfaces();
-            var nic = allInterfaces.FirstOrDefault(i => i.Name == interfaceName);
-            if(nic == null)
+            try
             {
-                Log.NetworkInterfaceNotFound(logger, interfaceName);
-                continue;
-            }
-
-            var addr = nic.GetIPProperties().UnicastAddresses
-                .Where(i => !OperatingSystem.IsWindows() || i.DuplicateAddressDetectionState == DuplicateAddressDetectionState.Preferred)
-                .Where(i => i.Address.AddressFamily == AddressFamily.InterNetworkV6)
-                .Where(i => !i.Address.IsIPv6LinkLocal)
-                .Where(i => i.PrefixLength == 64)
-                .Where(i => !OperatingSystem.IsWindows() || i.PrefixOrigin == PrefixOrigin.RouterAdvertisement)
-                .OrderByDescending(i => OperatingSystem.IsWindows() ? i.AddressPreferredLifetime : 0L)
-                .Select(i => i.Address.ToString())
-                .FirstOrDefault();
-            
-            if(addr == null)
-            {
-                Log.AddressNotFound(logger);
-                continue;
-            }
-
-            if(recordIp != addr)
-            {
-                try
+                if (!GetNetworkInterface(interfaceName, out var nic))
                 {
-                    await cloudflareClient.SetAddress(recordId, addr);
-                    recordIp = addr;
-                    Log.UpdateNewIp(logger, addr);
+                    Log.NetworkInterfaceNotFound(logger, interfaceName);
+                    continue;
                 }
-                catch (Exception e)
-                {
-                    Log.UpdateNewIpFailed(e, logger);
-                }
-            }
-            else
-            {
-                Log.SameIPAddress(logger);
-            }
 
-            await timer.WaitForNextTickAsync(stoppingToken);
+                if (!GetAddress(nic, out var address))
+                {
+                    Log.AddressNotFound(logger);
+                    continue;
+                }
+
+                if (recordIp == address)
+                {
+                    Log.SameIPAddress(logger);
+                    continue;
+                }
+
+                await cloudflareClient.SetAddress(recordId, address);
+                recordIp = address;
+                Log.UpdateNewIp(logger, address);
+            }
+            catch (Exception e)
+            {
+                Log.UpdateNewIpFailed(e, logger);
+            }
+            finally
+            {
+                await timer.WaitForNextTickAsync(stoppingToken);
+            }
         }
     }
 }
