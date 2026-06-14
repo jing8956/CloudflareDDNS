@@ -1,31 +1,21 @@
 # CloudflareDDNS
 Periodically obtain the current IPv6 address from the NIC and update Cloudflare DNS record if changed.
 
-Parameters in appsettings.json:
-- InterfaceName: Network interfaces name. You can find all network interface name in log when network interface not found.
-- RecordId: Upload DNS reqcord id. Create reocrd first and use `CloudflareDDNS --domain my-machine.example.com --zoneid <zoneid> --apikey <apikey>` search it.
-- ApiKey: Visit https://dash.cloudflare.com/profile/api-tokens to create a api key.
-- ZoneId: Visit Cloudflare domain Overview page and find Zone ID.
-- Period: Period for check. eg: 00:01:00
+This program performs the following actions:
+1. Obtains the current computer's FQDN upon startup
+2. Checks if a unique DNS record with the corresponding ID exists on Cloudflare based on the FQDN
+3. Attempts to obtain the first NIC with a public IPv6 address
+4. Updates the address on Cloudflare
+5. Afterwards, it checks the address every minute to see if it has changed
+6. If the address has changed, it updates the address accordingly.
 
-## Create Windows Service
-```bat
-sc.exe create "CloudflareDDNS" binpath="C:\Path\To\CloudflareDDNS.exe" DisplayName="Cloudflare DDNS" start=auto
+## Install
+1. Add the computer to Active Directory or add DNS suffix.
+2. Create a AAAA record in Cloudflare DNS. 
+3. Get Cloudflare zone id and create api key.
+4. Use the following PowerShell 7 script to install the program.
+```pwsh
+$zoneId = Read-Host -Prompt "Please input Cloudflare Zone ID"
+$apiKey = Read-Host -Prompt "Please input Cloudflare API Key" -MaskInput
+msiexec.exe /i CloudflareDDNS-4.0.0-win-x64.msi CLOUDFLARE_ZONE_ID=$zoneId CLOUDFLARE_API_KEY=$apiKey
 ```  
-
-
-## Create Linux Service (Systemd) 
-```ini
-[Unit]
-Description=Cloudflare DDNS
-After=network.target
-
-[Service]
-Type=simple
-Restart=always
-ExecStart=/Path/To/CloudflareDDNS
-WorkingDirectory=/Path/To
-
-[Install]
-WantedBy=multi-user.target
-```
