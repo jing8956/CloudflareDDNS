@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="WixToolset.Sdk/7.0.0">
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <AcceptEula>wix7</AcceptEula>
+    <!-- The WixUtilExtension ServiceConfig element is not a substitute for the ServiceConfig element -->
+    <!-- https://github.com/orgs/wixtoolset/discussions/7452 -->
+    <NoWarn>WIX1149</NoWarn>
+    <InstallerPlatform>x64</InstallerPlatform>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ProductName>CloudflareDDNS</ProductName>
+    <ProductDisplayName>Cloudflare DDNS</ProductDisplayName>
+    <ProductManufacturer>jing8956</ProductManufacturer>
+    <ProductVersion>4.0.0</ProductVersion>
+    <ProductUpgradeCode>48EAB158-B7E6-4586-B753-69480A54DF0D</ProductUpgradeCode>
+  </PropertyGroup>
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);ProductName=$(ProductName)</DefineConstants>
+    <DefineConstants>$(DefineConstants);ProductDisplayName=$(ProductDisplayName)</DefineConstants>
+    <DefineConstants>$(DefineConstants);ProductManufacturer=$(ProductManufacturer)</DefineConstants>
+    <DefineConstants>$(DefineConstants);ProductVersion=$(ProductVersion)</DefineConstants>
+    <DefineConstants>$(DefineConstants);ProductUpgradeCode=$(ProductUpgradeCode)</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="7.0.0" />
+    <PackageReference Include="WixToolset.Netfx.wixext" Version="7.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CloudflareDDNS\CloudflareDDNS.csproj" Publish="true" />
+    <ProjectReference Include="..\CloudflareDDNS.WixToolset.Utils\CloudflareDDNS.WixToolset.Utils.csproj" />
+  </ItemGroup>
+</Project>

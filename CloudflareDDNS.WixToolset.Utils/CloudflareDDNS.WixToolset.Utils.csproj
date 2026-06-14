@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <AcceptEula>wix7</AcceptEula>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="CustomAction.config" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Meziantou.Framework.Win32.CredentialManager" Version="1.7.18" />
+    <PackageReference Include="WixToolset.Dtf.CustomAction" Version="7.0.0" />
+    <PackageReference Include="WixToolset.Dtf.WindowsInstaller" Version="7.0.0" />
+  </ItemGroup>
+</Project>

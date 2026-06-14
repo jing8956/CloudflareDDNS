@@ -3,7 +3,12 @@ root = true
 [*]
 charset = utf-8
 
-[*.{csproj,fsproj}]
+[*.{csproj,fsproj,wixproj}]
+indent_style = space
+indent_size = 2
+insert_final_newline = false
+
+[*.{wxs,wxl}]
 indent_style = space
 indent_size = 2
 insert_final_newline = false

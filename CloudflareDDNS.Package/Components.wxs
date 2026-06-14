@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:NetFX="http://wixtoolset.org/schemas/v4/wxs/netfx">
+  <Fragment>
+
+    <PropertyRef Id="NETFRAMEWORK40CLIENTINSTALLROOTDIR64"/>
+
+    <Component Id="MainComponent" Directory="INSTALLFOLDER" Bitness="always64">
+      <!-- Copies the CloudflareDDNS.exe file using the project reference preprocessor variables -->
+      <File Id="CloudflareDDNS.exe" Source="CloudflareDDNS.exe" KeyPath="true" />
+      <!-- Remove file from the InstallFolder on uninstall -->
+      <RemoveFile Id="Remove_CloudflareDDNS.exe" Name="CloudflareDDNS.exe" On="both" />
+
+      <File Id="CloudflareDDNS.pdb" Source="CloudflareDDNS.pdb" />
+      <RemoveFile Id="Remove_CloudflareDDNS.pdb" Name="CloudflareDDNS.pdb" On="both" />
+
+      <File Id="appsettings.json" Source="appsettings.json" />
+      <RemoveFile Id="Remove_appsettings.json" Name="appsettings.json" On="both" />
+
+      <!-- Tell WiX to install the Service -->
+      <ServiceInstall Id="ServiceInstaller" Type="ownProcess"
+                      Name="ddns" DisplayName="$(ProductDisplayName)"
+                      Description="Cloudflare DDNS Service"
+                      Start="auto" ErrorControl="normal" Vital="yes">
+        <ServiceConfig DelayedAutoStart="yes" OnInstall="yes" OnReinstall="no" OnUninstall="no"/>
+        <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="restart"
+                            ResetPeriodInDays="1" RestartServiceDelayInSeconds="60"/>
+        <ServiceDependency Id="Dnscache" />
+        <ServiceDependency Id="TcpIP" />
+      </ServiceInstall>
+
+      <!-- Tell WiX to start the Service -->
+      <ServiceControl Id="StartService" Name="ddns" Wait="true"
+                      Start="install" Stop="both" Remove="uninstall" />
+    </Component>
+    
+  </Fragment>
+</Wix>

@@ -1,16 +1,29 @@
+using Microsoft.Extensions.Options;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using Microsoft.Extensions.Options;
 
 namespace CloudflareDDNS;
 
-public class Worker(
-    CloudflareClient cloudflareClient,
-    IOptions<WorkerOptions> options,
-    IHost host, ILogger<Worker> logger) : BackgroundService
+public class Worker : BackgroundService
 {
+    private readonly CloudflareClient _client;
+    private readonly WorkerOptions _options;
+    private readonly IHost _host;
+    private readonly ILogger<Worker> _logger;
+
+    public Worker(
+        CloudflareClient cloudflareClient,
+        IOptions<WorkerOptions> options,
+        IHost host, ILogger<Worker> logger)
+    {
+        _client = cloudflareClient;
+        _options = options.Value;
+        _host = host;
+        _logger = logger;
+    }
+
     private static bool GetNetworkInterface(string interfaceName, [NotNullWhen(true)] out NetworkInterface? nic)
     {
         var allInterfaces = NetworkInterface.GetAllNetworkInterfaces();
@@ -43,65 +56,83 @@ public class Worker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var interfaceName = options.Value.InterfaceName;
-        var recordId = options.Value.RecordId;
+        var interfaceName = _options.InterfaceName;
+        var recordId = _options.RecordId;
 
-        if (interfaceName == null)
+        if (interfaceName is null)
         {
-            Log.InterfaceNameIsNull(logger);
+            Log.InterfaceNameIsNull(_logger);
 
-            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-            interfaceName = interfaces.Where(i =>
+            for (; ; )
             {
-                return i.GetIPProperties().UnicastAddresses
-                .Where(info => info.PrefixLength == 64)
-                .Select(info => info.Address)
-                .Where(addr => addr.AddressFamily == AddressFamily.InterNetworkV6)
-                .Any(addr => !addr.IsIPv6LinkLocal);
-            }).Select(i => i.Name).FirstOrDefault();
+                var interfaces = NetworkInterface.GetAllNetworkInterfaces();
+                // 查找第一个具有公网 IPv6 地址的网络接口
+                interfaceName = interfaces.Where(i =>
+                {
+                    return i.GetIPProperties().UnicastAddresses
+                    .Where(info => info.PrefixLength == 64)
+                    .Select(info => info.Address)
+                    .Where(addr => addr.AddressFamily == AddressFamily.InterNetworkV6)
+                    .Any(addr => !addr.IsIPv6LinkLocal);
+                }).Select(i => i.Name).FirstOrDefault();
 
-            if (interfaceName == null)
-            {
-                Log.NetworkInterfaceNotFound(logger);
-                await host.StopAsync(stoppingToken);
-                return;
+                if (interfaceName == null)
+                {
+                    Log.NetworkInterfaceNotFound(_logger);
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    continue;
+                }
+
+                break;
             }
-
-            Log.FoundInterface(logger, interfaceName);
         }
+
         if (recordId == null)
         {
-            Log.RecordIdIsNull(logger);
+            Log.RecordIdIsNull(_logger);
 
-            var domain = options.Value.Domain;
-            if (domain == null)
+            for (; ; )
             {
-                domain = Dns.GetHostEntry("localhost").HostName;
-                Log.DomainIsNull(logger, domain);
-            }
+                var domain = _options.Domain;
+                if (domain == null)
+                {
+                    domain = Dns.GetHostEntry("localhost").HostName;
+                    Log.DomainIsNull(_logger, domain);
+                }
 
-            var records = await cloudflareClient.FindRecordsAsync(domain);
-            switch (records.Length)
-            {
-                case 0:
-                    Log.NoRecordFound(logger);
-                    await host.StopAsync(stoppingToken);
-                    return;
-                case 1:
-                    recordId = records[0].Id;
-                    Log.FoundRecordId(logger, recordId);
-                    break;
-                default:
-                    foreach (var item in records)
+                try
+                {
+                    var records = await _client.FindRecordsAsync(domain);
+                    switch (records.Length)
                     {
-                        Log.MulitiRecordsFound(logger, item.Id, item.Content);
+                        case 0:
+                            Log.NoRecordFound(_logger);
+                            await _host.StopAsync(stoppingToken);
+                            return;
+                        case 1:
+                            recordId = records[0].Id;
+                            Log.FoundRecordId(_logger, recordId);
+                            break;
+                        default:
+                            foreach (var item in records)
+                            {
+                                Log.MulitiRecordsFound(_logger, item.Id, item.Content);
+                            }
+                            await _host.StopAsync(stoppingToken);
+                            return;
                     }
-                    await host.StopAsync(stoppingToken);
-                    return;
+
+                    break;
+                }
+                catch (Exception e)
+                {
+                    Log.GetZoneIdFailed(e, _logger);
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                }
             }
         }
 
-        using var timer = new PeriodicTimer(options.Value.Period);
+        using var timer = new PeriodicTimer(_options.Period);
         var recordIp = "";
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -109,29 +140,29 @@ public class Worker(
             {
                 if (!GetNetworkInterface(interfaceName, out var nic))
                 {
-                    Log.NetworkInterfaceNotFound(logger, interfaceName);
+                    Log.NetworkInterfaceNotFound(_logger, interfaceName);
                     continue;
                 }
 
                 if (!GetAddress(nic, out var address))
                 {
-                    Log.AddressNotFound(logger);
+                    Log.AddressNotFound(_logger);
                     continue;
                 }
 
                 if (recordIp == address)
                 {
-                    Log.SameIPAddress(logger);
+                    Log.SameIPAddress(_logger);
                     continue;
                 }
 
-                await cloudflareClient.SetAddress(recordId, address);
+                await _client.SetAddress(recordId, address);
                 recordIp = address;
-                Log.UpdateNewIp(logger, address);
+                Log.UpdateNewIp(_logger, address);
             }
             catch (Exception e)
             {
-                Log.UpdateNewIpFailed(e, logger);
+                Log.UpdateNewIpFailed(e, _logger);
             }
             finally
             {

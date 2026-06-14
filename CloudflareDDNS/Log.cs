@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Text;
-
 namespace CloudflareDDNS;
 
 internal static partial class Log
@@ -12,6 +8,8 @@ internal static partial class Log
     public static partial void NoRecordFound(ILogger logger);
     [LoggerMessage(5002, LogLevel.Error, "Muliti records found: {RecordId} {Content}.")]
     public static partial void MulitiRecordsFound(ILogger logger, string recordId, string content);
+    [LoggerMessage(5003, LogLevel.Error, "Get zone id failed.")]
+    public static partial void GetZoneIdFailed(Exception exception, ILogger logger);
 
     [LoggerMessage(6000, LogLevel.Warning, "InterfaceName is null, try find network interface.")]
     public static partial void InterfaceNameIsNull(ILogger logger);

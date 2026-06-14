@@ -1,0 +1,14 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="CloudflareDDNS.Package/CloudflareDDNS.Package.wixproj" Type="b7dd6f7e-def8-4e67-b5b7-07ef123db6f0">
+    <Platform Solution="*|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="CloudflareDDNS.WixToolset.Utils/CloudflareDDNS.WixToolset.Utils.csproj" Id="45741966-8813-44a5-86fc-7500f89ba05e" />
+  <Project Path="CloudflareDDNS/CloudflareDDNS.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+</Solution>

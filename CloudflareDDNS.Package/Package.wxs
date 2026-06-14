@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Id="Jing8956.CloudflareDDNS.Package"
+           Name="$(ProductName)" Manufacturer="$(ProductManufacturer)" Version="$(ProductVersion)"
+           UpgradeCode="$(ProductUpgradeCode)" Scope="perMachine"  Compressed="true">
+
+    <MediaTemplate EmbedCab="yes" />
+    
+    <MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeError)" />
+
+    <Property Id="CLOUDFLARE_ZONE_ID" Admin="yes" />
+    <Property Id="CLOUDFLARE_API_KEY" Secure="yes" Hidden="yes" />
+
+    <Binary Id="CloudflareDDNS_Utils_DLL" SourceFile="CloudflareDDNS.WixToolset.Utils.CA.dll" />
+
+    <Property Id="WriteCredential" Hidden="yes" />
+    <CustomAction Id="SetWriteCredentialData" Property="WriteCredential"
+                  Value="ZONE_ID=[CLOUDFLARE_ZONE_ID];API_KEY=[CLOUDFLARE_API_KEY]" />
+    
+    <CustomAction Id="WriteCredential"
+        BinaryRef="CloudflareDDNS_Utils_DLL" DllEntry="WriteCredential"
+        Execute="deferred" Return="check" Impersonate="no" />
+
+    <CustomAction Id="DeleteCredential"
+        BinaryRef="CloudflareDDNS_Utils_DLL" DllEntry="DeleteCredential"
+        Execute="deferred" Return="check" Impersonate="no" />
+    
+    <InstallExecuteSequence>
+      <Custom Action="SetWriteCredentialData" Before="WriteCredential" />
+      <Custom Action="WriteCredential" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="DeleteCredential" After="RemoveFiles" Condition="(REMOVE) AND (NOT UPGRADINGPRODUCTCODE)" />
+    </InstallExecuteSequence>
+
+    <Feature Id="Main">
+      <ComponentRef Id="MainComponent"/>
+    </Feature>
+  </Package>
+	
+</Wix>
